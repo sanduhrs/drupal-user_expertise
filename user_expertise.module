@@ -1,0 +1,87 @@
+<?php
+/* $Id$ */
+
+/**
+ * TODO:
+ */
+ 
+/**
+* Implementation of hook_help();
+*/
+function user_expertise_help($section='') {
+
+  $output = '';
+
+  switch ($section) {
+    case "admin/help#user-expertise":
+      $output = '<p>'.  t("Shows a users taxonomy terms on his profile page.") .'</p>';
+      break;
+  }
+
+  return $output;
+}
+
+function user_expertise_menu() {
+  global $user;
+  
+  user_expertise_overall($user);
+}
+
+function user_expertise_user($op, &$edit, &$account, $category = NULL) {
+  global $user;
+
+  if ($op == 'view') {
+    $expertise = array(
+      'nodes' => user_expertise_overall($account),
+      'comments' => user_expertise_overall($account, 'comment'),
+    );
+    
+    if ($expertise['nodes']) {
+      $items['user_expertise_overall_nodes'] = array(
+        'title' => t('Overall node expertise'),
+        'value' => theme('user_expertise_o_meter', $expertise['nodes']),
+        'class' => 'user-expertise-overall-nodes',
+      );
+    }
+    if ($expertise['comments']) {
+      $items['user_expertise_overall_comments'] = array(
+        'title' => t('Overall comment expertise'),
+        'value' => theme('user_expertise_o_meter', $expertise['comments']),
+        'class' => 'user-expertise-overall-comments',
+      );
+    }
+    
+    return array(t('User expertise') => $items);
+  }
+}
+
+function user_expertise_overall($user, $type = 'node') {
+  
+  $expertise = db_fetch_object(db_query("SELECT AVG(vc.value) AS expertise FROM {votingapi_cache} vc
+                                            INNER JOIN {node} n 
+                                            WHERE n.uid = %d
+                                              AND vc.content_id = n.nid
+                                              AND vc.function = 'average'
+                                              AND vc.content_type = '%s'
+  ", $user->uid, $type));
+
+  return $expertise->expertise ? $expertise->expertise : NULL;
+}
+
+function theme_user_expertise_o_meter($index) {
+  if (is_numeric($index)) {
+    $output = '
+    <div class="user_activity_o_meter" style="width:100%;height:20px;background-color:#C3D9FF;">
+      <div style="width:'. $index .'%;height:20px;background-color:#6BBA70;color:white;text-align:center;"></div>
+      <div style="margin-top:-20px;text-align:center;">'. $index .'%</div>
+    </div>';
+  }
+  else {
+    $output = t('No evaluation available.');
+  }
+  
+  return $output;
+}
+
+
+
