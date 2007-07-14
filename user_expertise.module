@@ -36,7 +36,7 @@ function user_expertise_user($op, &$edit, &$account, $category = NULL) {
       );
     }
     
-    return array(t('User expertise') => $items);
+    return $items ? array(t('User expertise') => $items) : NULL;
   }
 }
 
