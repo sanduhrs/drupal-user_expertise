@@ -16,24 +16,50 @@ function user_expertise_user($op, &$edit, &$account, $category = NULL) {
   global $user;
 
   if ($op == 'view') {
-    $expertise = array(
-      'nodes' => user_expertise_overall($account),
-      'comments' => user_expertise_overall($account, 'comment'),
+    $overall = array(
+      'nodes'     => user_expertise_overall_percentage($account),
+      'comments'  => user_expertise_overall_percentage($account, 'comment'),
     );
     
-    if ($expertise['nodes']) {
+    if ($overall['nodes']) {
       $items['user_expertise_overall_nodes'] = array(
         'title' => t('Overall node expertise'),
-        'value' => theme('user_expertise_o_meter', $expertise['nodes']),
-        'class' => 'user-expertise-overall-nodes',
+        'value' => theme('user_expertise_o_meter', $overall['nodes']),
+        'class' => 'overall-nodes',
       );
     }
-    if ($expertise['comments']) {
+    
+    $expertises = user_expertise_all($user);
+//     drupal_set_message('<pre>'. print_r($expertises, 1) .'</pre>');
+    if (is_array($expertises)) {
+      foreach($expertises as $expertise) {
+        $term = taxonomy_get_term($expertise->tid);
+        $items['user_expertise_overall_nodes_'. $expertise->tid] = array(
+          'title' => t($term->name),
+          'value' => theme('user_expertise_o_meter', $expertise->percentage),
+          'class' => 'term-nodes',
+          'style' => 'width:40%;',
+        );
+      }
+    }
+    
+    if ($overall['comments']) {
       $items['user_expertise_overall_comments'] = array(
         'title' => t('Overall comment expertise'),
-        'value' => theme('user_expertise_o_meter', $expertise['comments']),
-        'class' => 'user-expertise-overall-comments',
+        'value' => theme('user_expertise_o_meter', $overall['comments']),
+        'class' => 'overall-comments',
       );
+      $expertises = user_expertise_all($user, 'comment');
+//     drupal_set_message('<pre>'. print_r($expertises, 1) .'</pre>');
+      foreach($expertises as $expertise) {
+        $term = taxonomy_get_term($expertise->tid);
+        $items['user_expertise_overall_nodes_'. $expertise->tid] = array(
+          'title' => t($term->name),
+          'value' => theme('user_expertise_o_meter', $expertise->percentage),
+          'class' => 'term-comments',
+          'style' => 'width:40%;',
+        );
+      }
     }
     
     return $items ? array(t('User expertise') => $items) : NULL;
@@ -41,22 +67,42 @@ function user_expertise_user($op, &$edit, &$account, $category = NULL) {
 }
 
 /**
- * Generate a percentage value representing a user's overall experise
+ * Generate a percentage value representing a user's overall expertise
  * @param user a user object
  * @param type a string describing the object type
  * @return an integer representing a percentage
  */
-function user_expertise_overall($user, $type = 'node') {
+function user_expertise_overall_percentage($user, $type = 'node') {
+  $result = db_fetch_object(db_query("SELECT SUM(expertise) AS expertise, SUM(affirmations) AS affirmations FROM {user_expertise} WHERE uid=%d AND content_type='%s'", $user->uid, $type));
   
-  $expertise = db_fetch_object(db_query("SELECT AVG(vc.value) AS expertise FROM {votingapi_cache} vc
-                                            INNER JOIN {node} n 
-                                            WHERE n.uid = %d
-                                              AND vc.content_id = n.nid
-                                              AND vc.function = 'average'
-                                              AND vc.content_type = '%s'
-  ", $user->uid, $type));
+  return $result->expertise ? round($result->expertise/$result->affirmations) : FALSE;
+}
 
-  return $expertise->expertise ? $expertise->expertise : NULL;
+/**
+ * Generate a percentage value representing a user's term expertise
+ * @param user a user object
+ * @param tid a taxonomy term id
+ * @param type a string describing the object type
+ * @return an integer representing a percentage
+ */
+function user_expertise_term_percentage($user, $tid, $type = 'node') {
+  $result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE uid=%d AND tid=%d AND content_type='%s'", $user->uid, $tid, $type));
+  
+  return $result->expertise ? ($result->expertise/$result->affirmations) : FALSE;
+}
+
+/**
+ * 
+ */
+function user_expertise_all($user, $type = 'node') {
+  $result = db_query("SELECT * FROM {user_expertise} WHERE uid=%d AND content_type='%s' ORDER BY tid ASC", $user->uid, $type);
+  
+  while($expertise = db_fetch_object($result)) {
+    $expertise->percentage = $expertise->expertise/$expertise->affirmations;
+    $expertises[] = $expertise;
+  }
+  
+  return $expertises;
 }
 
 /**
@@ -79,5 +125,87 @@ function theme_user_expertise_o_meter($index) {
   return $output;
 }
 
+/**
+ * Implementation of hook_votingapi_insert();
+ */
+function user_expertise_votingapi_insert($vobj) {
+  //TODO: Cache the expertise
+//   drupal_set_message('Votingapi insert:');
+//   drupal_set_message('<pre>'. print_r($vobj, 1) .'</pre>');
+  
+  if (is_numeric($vobj->content_id) AND $vobj->content_type == 'node') {
+    //Get taxonomy term id the node is linked with
+    $node = db_fetch_object(db_query("SELECT uid FROM {node} WHERE nid=%d", $vobj->content_id));
+    $terms = taxonomy_node_get_terms($vobj->content_id);
+    foreach($terms as $term) {
+      if ($result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE tid=%d AND uid=%d", $term->tid, $node->uid))) {
+//         drupal_set_message('<pre>'. print_r($result, 1) .'</pre>');
+        db_query("DELETE FROM {user_expertise} WHERE tid=%d AND uid=%d LIMIT 1", $result->tid, $result->uid);
+        db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
+        $term->tid, $node->uid, ($result->expertise+$vobj->value), ($result->affirmations+1), $vobj->content_type);
+      }
+      else {
+        db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
+        $term->tid, $node->uid, $vobj->value, 1, $vobj->content_type);
+      }
+    }
+//     drupal_set_message('<pre>'. print_r($taxonomy, 1) .'</pre>');
+  }
+}
 
+/**
+ * Implementation of hook_votingapi_update();
+ */
+function user_expertise_votingapi_update($vobj, $value) {
+  //TODO: Update the expertise cache
+//   drupal_set_message('Votingapi update:');
+//   drupal_set_message('<pre>'. print_r($vobj, 1) .'</pre>');
+//   drupal_set_message('<pre>'. print_r($value, 1) .'</pre>');
+  
+  if (is_numeric($vobj->content_id) AND $vobj->content_type == 'node') {
+    //Get taxonomy term id the node is linked with
+    $node = db_fetch_object(db_query("SELECT uid FROM {node} WHERE nid=%d", $vobj->content_id));
+    $terms = taxonomy_node_get_terms($vobj->content_id);
+    foreach($terms as $term) {
+      if ($result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE tid=%d AND uid=%d", $term->tid, $node->uid))) {
+//         drupal_set_message('<pre>'. print_r($result, 1) .'</pre>');
+        db_query("DELETE FROM {user_expertise} WHERE tid=%d AND uid=%d LIMIT 1", $result->tid, $result->uid);
+        db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
+        $term->tid, $node->uid, ($result->expertise-$vobj->value+$value), $result->affirmations, $vobj->content_type);
+      }
+      else {
+        db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
+        $term->tid, $node->uid, $value, 1, $vobj->content_type);
+      }
+    }
+//     drupal_set_message('<pre>'. print_r($taxonomy, 1) .'</pre>');
+  }
+}
 
+/**
+ * Implementation of hook_votingapi_delete();
+ */
+function user_expertise_votingapi_delete($vobj) {
+//TODO: Delete the expertise cache
+//   drupal_set_message('Votingapi delete:');
+//   drupal_set_message('<pre>'. print_r($vobj, 1) .'</pre>');
+  
+  if (is_numeric($vobj->content_id) AND $vobj->content_type == 'node') {
+    //Get taxonomy term id the node is linked with
+    $node = db_fetch_object(db_query("SELECT uid FROM {node} WHERE nid=%d", $vobj->content_id));
+    $terms = taxonomy_node_get_terms($vobj->content_id);
+    foreach($terms as $term) {
+      if ($result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE tid=%d AND uid=%d", $term->tid, $node->uid))) {
+//         drupal_set_message('<pre>'. print_r($result, 1) .'</pre>');
+        db_query("DELETE FROM {user_expertise} WHERE tid=%d AND uid=%d LIMIT 1", $result->tid, $result->uid);
+        db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
+        $term->tid, $node->uid, ($result->expertise-$vobj->value), ($result->affirmations-1), $vobj->content_type);
+      }
+      else {
+        db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
+        $term->tid, $node->uid, 0, 0, $vobj->content_type);
+      }
+    }
+//     drupal_set_message('<pre>'. print_r($taxonomy, 1) .'</pre>');
+  }
+}
