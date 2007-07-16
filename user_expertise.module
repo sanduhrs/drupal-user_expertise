@@ -140,9 +140,7 @@ function user_expertise_votingapi_insert($vobj) {
     foreach($terms as $term) {
       if ($result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE tid=%d AND uid=%d", $term->tid, $node->uid))) {
 //         drupal_set_message('<pre>'. print_r($result, 1) .'</pre>');
-        db_query("DELETE FROM {user_expertise} WHERE tid=%d AND uid=%d LIMIT 1", $result->tid, $result->uid);
-        db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
-        $term->tid, $node->uid, ($result->expertise+$vobj->value), ($result->affirmations+1), $vobj->content_type);
+        db_query("UPDATE {user_expertise} SET expertise=%d WHERE ueid=%d",($result->expertise+$vobj->value) , $result->ueid);
       }
       else {
         db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
@@ -169,9 +167,7 @@ function user_expertise_votingapi_update($vobj, $value) {
     foreach($terms as $term) {
       if ($result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE tid=%d AND uid=%d", $term->tid, $node->uid))) {
 //         drupal_set_message('<pre>'. print_r($result, 1) .'</pre>');
-        db_query("DELETE FROM {user_expertise} WHERE tid=%d AND uid=%d LIMIT 1", $result->tid, $result->uid);
-        db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
-        $term->tid, $node->uid, ($result->expertise-$vobj->value+$value), $result->affirmations, $vobj->content_type);
+        db_query("UPDATE {user_expertise} SET expertise=%d WHERE ueid=%d",($result->expertise-$vobj->value+$value) , $result->ueid);
       }
       else {
         db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
@@ -197,9 +193,7 @@ function user_expertise_votingapi_delete($vobj) {
     foreach($terms as $term) {
       if ($result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE tid=%d AND uid=%d", $term->tid, $node->uid))) {
 //         drupal_set_message('<pre>'. print_r($result, 1) .'</pre>');
-        db_query("DELETE FROM {user_expertise} WHERE tid=%d AND uid=%d LIMIT 1", $result->tid, $result->uid);
-        db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
-        $term->tid, $node->uid, ($result->expertise-$vobj->value), ($result->affirmations-1), $vobj->content_type);
+        db_query("UPDATE {user_expertise} SET expertise=%d WHERE ueid=%d",($result->expertise-$vobj->value) , $result->ueid);
       }
       else {
         db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')", 
