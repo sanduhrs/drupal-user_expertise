@@ -20,3 +20,10 @@ function user_expertise_install() {
       break;
   }
 }
+
+/**
+ * Implementation of hook_uninstall();
+ */
+function user_expertise_uninstall() {
+  db_query('DROP TABLE {user_expertise}');
+}
