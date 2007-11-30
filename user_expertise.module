@@ -7,48 +7,7 @@
  *
  * @author
  * Stefan Auditor <stefan.auditor@erdfisch.de>
- *
- * @todo
- * track taxonomy changes when node is edited
  */
-
-/**
- * Implementation of hook_menu().
- */
-function user_expertise_menu($may_cache) {
-  $items = array();
-
-  if ($may_cache) {
-    $items[] = array('path' => 'expertise',
-      'title' => t('User expertise'),
-      'callback' => 'user_expertise_browse',
-      'access' => user_access('access user profiles'),
-      'type' => MENU_SUGGESTED_ITEM,
-    );
-    $items[] = array('path' => 'expertise/feed',
-      'title' => t('User expertise feed'),
-      'callback' => 'user_expertise_feed',
-      'access' => user_access('access user profiles'),
-      'type' => MENU_CALLBACK,
-    );
-  }
-
-  return $items;
-}
-
-function user_expertise_browse() {
-  $result = pager_query("SELECT DISTINCT(uid) FROM {user_expertise} ORDER BY uid DESC", 20);
-
-  $output = '<div id="user_expertise">';
-  while ($account = db_fetch_object($result)) {
-    $account = user_load(array('uid' => $account->uid));
-    $output .= theme('user_expertise_listing', $account);
-  }
-  $output .= theme('pager', array(), 20);
-  $output .= '</div>';
-
-  return $output;
-}
 
 /**
  * Implementation of hook_user().
@@ -56,243 +15,48 @@ function user_expertise_browse() {
 function user_expertise_user($op, &$edit, &$account, $category = NULL) {
   global $user;
 
-  switch ($op) {
-    case 'view':
-      $overall = array(
-        'nodes'     => $account->user_expertise_overall_nodes,
-        'comments'  => $account->user_expertise_overall_comments,
-      );
-
-      if ($overall['nodes']) {
-        $items['user_expertise_overall_nodes'] = array(
-          'title' => t('Overall node expertise'),
-          'value' => theme('user_expertise_o_meter_overall', $overall['nodes']),
-          'class' => 'overall-nodes',
-        );
-      }
-
-      $expertises = user_expertise_all($account);
-      if (is_array($expertises)) {
-        foreach($expertises as $expertise) {
-          $term = taxonomy_get_term($expertise->tid);
-          if ($term->name) {
-            $items['user_expertise_overall_nodes_'. $expertise->tid] = array(
-              'title' => t($term->name),
-              'value' => theme('user_expertise_o_meter', $expertise->percentage),
-              'class' => 'term-nodes',
-            );
-          }
-        }
-      }
-
-      if ($overall['comments']) {
-        $items['user_expertise_overall_comments'] = array(
-          'title' => t('Overall comment expertise'),
-          'value' => theme('user_expertise_o_meter_overall', $overall['comments']),
-          'class' => 'overall-comments',
-        );
-        $expertises = user_expertise_all($account, 'comment');
-//         drupal_set_message('<pre>'. print_r($expertises, 1) .'</pre>');
-        foreach($expertises as $expertise) {
-          $term = taxonomy_get_term($expertise->tid);
-          if ($term->name) {
-            $items['user_expertise_overall_comments_'. $expertise->tid] = array(
-              'title' => t($term->name),
-              'value' => theme('user_expertise_o_meter', $expertise->percentage),
-              'class' => 'term-comments',
-            );
-          }
-        }
-      }
-
-      return $items ? array(t('Expertise') => $items) : NULL;
-      break;
-    case 'load':
-      $account->user_expertise_overall_nodes = user_expertise_overall_percentage($account);
-      $account->user_expertise_overall_comments = user_expertise_overall_percentage($account, 'comment');
-      break;
-  }
-}
-
-/**
- * Implementation of hook_block().
- */
-function user_expertise_block($op = 'list', $delta = 0, $edit = array()) {
-  global $user;
-
-  if ($op == 'list') {
-     $blocks[0]['info'] = t('User experts');
-     return $blocks;
-  }
-  else if ($op == 'configure' && $delta == 0) {
-    $form['user_expertise_experts'] = array(
-      '#type' => 'select',
-      '#title' => t('Number of users to display'),
-      '#default_value' => variable_get('user_expertise_experts_count', 5),
-      '#options' => drupal_map_assoc(array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)),
+  if ($op == 'view') {
+    $expertise = array(
+      'nodes' => user_expertise_overall($account),
+      'comments' => user_expertise_overall($account, 'comment'),
     );
-    return $form;
-  }
-  else if ($op == 'save' && $delta == 0) {
-    variable_set('user_expertise_experts_count', $edit['user_expertise_experts_count']);
-  }
-  else if ($op == 'view') {
-    $block = array();
 
-    switch ($delta) {
-      case 0:
-        if (user_access('access content')) {
-          // Retrieve a list of new users who have subsequently accessed the site successfully.
-          $result = db_query_range('SELECT uid, name FROM {users} WHERE status != 0 AND access != 0 ORDER BY created DESC', 0, variable_get('user_block_whois_new_count', 5));
-          while ($account = db_fetch_object($result)) {
-            $items[] = $account;
-          }
-          $output = theme('user_list', $items);
-
-          $block['subject'] = t('User experts');
-          $block['content'] = $output;
-        }
-        return $block;
+    if ($expertise['nodes']) {
+      $items['user_expertise_overall_nodes'] = array(
+        'title' => t('Overall node expertise'),
+        'value' => theme('user_expertise_o_meter', $expertise['nodes']),
+        'class' => 'user-expertise-overall-nodes',
+      );
     }
+    if ($expertise['comments']) {
+      $items['user_expertise_overall_comments'] = array(
+        'title' => t('Overall comment expertise'),
+        'value' => theme('user_expertise_o_meter', $expertise['comments']),
+        'class' => 'user-expertise-overall-comments',
+      );
+    }
+
+    return array(t('User expertise') => $items);
   }
 }
 
 /**
- * Generate a percentage value representing a user's overall expertise
+ * Generate a percentage value representing a user's overall experise
  * @param user a user object
  * @param type a string describing the object type
  * @return an integer representing a percentage
  */
-function user_expertise_overall_percentage($user, $type = 'node') {
-  $key = 'user_expertise-'. $user->uid .'_'. $type;
-  if (!$result = cache_get($key)) {
-//     drupal_set_message('Live request!');//DEBUG
-    $result = db_fetch_object(db_query("SELECT SUM(expertise) AS expertise, SUM(affirmations) AS affirmations FROM {user_expertise} WHERE uid=%d AND content_type='%s'", $user->uid, $type));
-    cache_set($key, 'cache', serialize($result), CACHE_TEMPORARY);
-  }
-  else {
-//     dprint_r();
-//     drupal_set_message('Cached request.');//DEBUG
-    $result = unserialize($result->data);
-  }
+function user_expertise_overall($user, $type = 'node') {
 
-  return $result->expertise ? round($result->expertise/$result->affirmations) : FALSE;
-}
+  $expertise = db_fetch_object(db_query("SELECT AVG(vc.value) AS expertise FROM {votingapi_cache} vc
+                                            INNER JOIN {node} n
+                                            WHERE n.uid = %d
+                                              AND vc.content_id = n.nid
+                                              AND vc.function = 'average'
+                                              AND vc.content_type = '%s'
+  ", $user->uid, $type));
 
-/**
- * Generate a percentage value representing a user's term expertise
- * @param user a user object
- * @param tid a taxonomy term id
- * @param type a string describing the object type
- * @return an integer representing a percentage
- */
-function user_expertise_term_percentage($user, $tid, $type = 'node') {
-  $result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE uid=%d AND tid=%d AND content_type='%s'", $user->uid, $tid, $type));
-
-  return $result->expertise ? ($result->expertise/$result->affirmations) : FALSE;
-}
-
-/**
- *
- */
-function user_expertise_all($user, $type = 'node') {
-  $result = db_query("SELECT * FROM {user_expertise} WHERE uid=%d AND content_type='%s' ORDER BY tid ASC", $user->uid, $type);
-//   $result = db_query("SELECT ue.*,td.vid FROM {user_expertise} ue
-//                         INNER JOIN {term_data} td
-//                         WHERE ue.uid=%d AND ue.content_type='%s' AND ue.tid=td.tid
-//                         ORDER BY ue.tid,td.vid ASC", $user->uid, $type);
-
-  while($expertise = db_fetch_object($result)) {
-    $expertise->percentage = $expertise->expertise/$expertise->affirmations;
-    $expertises[] = $expertise;
-  }
-
-  return $expertises;
-}
-
-/**
- * Implementation of hook_votingapi_insert();
- */
-function user_expertise_votingapi_insert($vobj) {
-  switch ($vobj->content_type) {
-    case 'node':
-      $result = db_fetch_object(db_query("SELECT nid,uid FROM {node} WHERE nid=%d", $vobj->content_id));
-      break;
-    case 'comment':
-      $result = db_fetch_object(db_query("SELECT nid,uid FROM {comments} WHERE cid=%d", $vobj->content_id));
-      break;
-  }
-  $nid = $result->nid;
-  $uid = $result->uid;
-
-  //Get taxonomy term id the node is linked with
-  $terms = taxonomy_node_get_terms($nid);
-  foreach($terms as $term) {
-    if ($result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE tid=%d AND uid=%d AND content_type='%s'", $term->tid, $uid, $vobj->content_type))) {
-      db_query("UPDATE {user_expertise} SET expertise=%d, affirmations=affirmations+1 WHERE tid=%d AND uid=%d AND content_type='%s'",($result->expertise+$vobj->value) , $term->tid, $uid, $vobj->content_type);
-    }
-    else {
-      db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')",
-      $term->tid, $uid, $vobj->value, 1, $vobj->content_type);
-    }
-  }
-}
-
-/**
- * Implementation of hook_votingapi_update();
- */
-function user_expertise_votingapi_update($vobj, $value) {
-  switch ($vobj->content_type) {
-    case 'node':
-      $result = db_fetch_object(db_query("SELECT nid,uid FROM {node} WHERE nid=%d", $vobj->content_id));
-      break;
-    case 'comment':
-      $result = db_fetch_object(db_query("SELECT nid,uid FROM {comments} WHERE cid=%d", $vobj->content_id));
-      break;
-  }
-  $nid = $result->nid;
-  $uid = $result->uid;
-
-  //Get taxonomy term id the node is linked with
-  $terms = taxonomy_node_get_terms($nid);
-  foreach($terms as $term) {
-    if ($result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE tid=%d AND uid=%d AND content_type='%s'", $term->tid, $uid, $vobj->content_type))) {
-      db_query("UPDATE {user_expertise} SET expertise=%d WHERE tid=%d AND uid=%d AND content_type='%s'",($result->expertise-$vobj->value+$value), $term->tid, $uid, $vobj->content_type);
-    }
-    else {
-      db_query("INSERT INTO {user_expertise} (tid, uid, expertise, affirmations, content_type) VALUES (%d, %d, %d, %d, '%s')",
-      $term->tid, $uid, $value, 1, $vobj->content_type);
-    }
-  }
-}
-
-/**
- * Implementation of hook_votingapi_delete();
- */
-function user_expertise_votingapi_delete($vobj) {
-  switch ($vobj->content_type) {
-    case 'node':
-      $result = db_fetch_object(db_query("SELECT nid,uid FROM {node} WHERE nid=%d", $vobj->content_id));
-      break;
-    case 'comment':
-      $result = db_fetch_object(db_query("SELECT nid,uid FROM {comments} WHERE cid=%d", $vobj->content_id));
-      break;
-  }
-  $nid = $result->nid;
-  $uid = $result->uid;
-
-  //Get taxonomy term id the node is linked with
-  $terms = taxonomy_node_get_terms($nid);
-  foreach($terms as $term) {
-    if ($result = db_fetch_object(db_query("SELECT * FROM {user_expertise} WHERE tid=%d AND uid=%d AND content_type='%s'", $term->tid, $uid, $vobj->content_type))) {
-      if ($result->expertise-$vobj->value == 0) {
-        db_query("DELETE FROM {user_expertise} WHERE tid=%d AND uid=%d AND content_type='%s'", $term->tid, $uid, $vobj->content_type);
-      }
-      else {
-        db_query("UPDATE {user_expertise} SET expertise=%d, affirmations=affirmations-1 WHERE tid=%d AND uid=%d AND content_type='%s'",($result->expertise-$vobj->value), $term->tid, $uid, $vobj->content_type);
-      }
-    }
-  }
+  return $expertise->expertise ? $expertise->expertise : NULL;
 }
 
 /**
@@ -301,120 +65,16 @@ function user_expertise_votingapi_delete($vobj) {
  * @return a percentage meter in html
  */
 function theme_user_expertise_o_meter($index) {
-    $output = '
-    <div class="user_expertise_o_meter" style="width:100%;height:20px;background-color:#C3D9FF;">
-      <div style="width:'. sprintf("%01.0f", $index) .'%;height:20px;background-color:#6BBA70;color:white;text-align:center;"></div>
-      <div style="margin-top:-20px;text-align:center;">'. sprintf("%01.2f", $index) .'%</div>
-    </div>';
-
-  return $output;
-}
-
-function theme_user_expertise_o_meter_small($index) {
-    $output = '
-    <div class="user_expertise_o_meter" style="width:75%;height:2px;background-color:#C3D9FF;">
-      <div style="width:'. sprintf("%01.0f", $index) .'%;height:2px;background-color:#6BBA70;color:white;text-align:center;"></div>
-      <div style="margin-top:-22px;text-align:center;">'. sprintf("%01.2f", $index) .'%</div>
-    </div>';
-
-  return $output;
-}
-
-/**
- * Display a percentage meter
- * @param index a integer value representing a percentage
- * @return a percentage meter in html
- */
-function theme_user_expertise_o_meter_overall($index) {
+  if (is_numeric($index)) {
     $output = '
     <div class="user_activity_o_meter" style="width:100%;height:20px;background-color:#C3D9FF;">
-      <div style="width:'. sprintf("%01.0f", $index) .'%;height:20px;background-color:#6BBA70;color:white;text-align:center;"></div>
-      <div style="margin-top:-20px;text-align:center;">'. sprintf("%01.2f", $index) .'%</div>
+      <div style="width:'. $index .'%;height:20px;background-color:#6BBA70;color:white;text-align:center;"></div>
+      <div style="margin-top:-20px;text-align:center;">'. $index .'%</div>
     </div>';
-
-  return $output;
-}
-
-function theme_user_expertise_listing($user) {
-  $output  = "<div class=\"profile\">\n";
-  $output .= theme('user_picture', $user);
-  $output .= ' <div class="name">'. theme('username', $user) ."</div>\n";
-  $output .= ' <div class="expertise nodes">'. t('Overall node expertise'). theme('user_expertise_o_meter_small', $user->user_expertise_overall_nodes) ."</div>\n";
-  $output .= ' <div class="expertise comments">'. t('Overall comment expertise'). theme('user_expertise_o_meter_small', $user->user_expertise_overall_comments) ."</div>\n";
-  $output .= "</div>\n";
-
-  return $output;
-}
-
-function user_expertise_feed($uids = array(), $channel = array()) {
-  global $base_url, $language;
-
-  if (!$uids) {
-    $result = db_query_range("SELECT DISTINCT(u.uid) FROM {user_activity} ua
-                                INNER JOIN {users} u ON u.uid=ua.uid
-                                WHERE u.status>0 AND u.access>0 ORDER BY ua.idx DESC", 0, variable_get('feed_default_items', 10));
-    while ($row = db_fetch_object($result)) {
-      $uids[] = $row->uid;
-    }
+  }
+  else {
+    $output = t('No evaluation available.');
   }
 
-  $namespaces = array('xmlns:dc' => 'http://purl.org/dc/elements/1.1/');
-
-  $items = '';
-  foreach ($uids as $uid) {
-    // Load the specified user
-    $item = user_load(array('uid' => $uid));
-    $link = url("user/$uid", array('absolute' => TRUE));
-
-    $extra = array();
-    $extra = array_merge($extra,
-      array(
-        array(
-          'key' => 'pubDate',
-          'value' =>  date('r', $item->created)),
-          array(
-            'key' => 'dc:creator',
-            'value' => $item->name
-          ),
-          array(
-            'key' => 'guid',
-            'value' => $item->uid .' at '. $base_url,
-            'attributes' => array('isPermaLink' => 'false')
-          ),
-          array(
-          'key' => 'activity_idx',
-          'value' =>  $item->user_activity_index
-          ),
-        )
-      );
-
-    foreach ($extra as $element) {
-      if (isset($element['namespace'])) {
-        $namespaces = array_merge($namespaces, $element['namespace']);
-      }
-    }
-
-    $item->title = $item->name;
-    $item_text = t('Activity index: %idx%', array('%idx' => sprintf("%01.2f", $item->user_activity_index)));
-    $item_text .= '<p>'. l(t('read more'), 'user/'. $item->uid, NULL, NULL, NULL, TRUE) .'</p>';
-
-    $items .= format_rss_item($item->title, $link, $item_text, $extra);
-  }
-
-  $channel_defaults = array(
-    'version'     => '2.0',
-    'title'       => variable_get('site_name', 'Drupal'),
-    'link'        => $base_url,
-    'description' => variable_get('site_mission', ''),
-    'language'    => $language->language
-  );
-  $channel = array_merge($channel_defaults, $channel);
-
-  $output = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-  $output .= "<rss version=\"". $channel["version"] ."\" xml:base=\"". $base_url ."\" ". drupal_attributes($namespaces) .">\n";
-  $output .= format_rss_channel($channel['title'], $channel['link'], $channel['description'], $items, $channel['language']);
-  $output .= "</rss>\n";
-
-  drupal_set_header('Content-Type: application/rss+xml; charset=utf-8');
-  print $output;
+  return $output;
 }
