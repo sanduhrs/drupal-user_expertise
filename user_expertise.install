@@ -6,13 +6,13 @@ function user_expertise_install() {
     case 'mysql':
     case 'mysqli':
       db_query("CREATE TABLE {user_expertise} (
-                  ueid int(10) unsigned NOT NULL auto_increment,
                   tid int(10) unsigned NOT NULL,
                   uid int(10) unsigned NOT NULL,
                   expertise float default NULL,
                   affirmations int(10) unsigned NOT NULL,
                   content_type varchar(20) NOT NULL,
-                  PRIMARY KEY  (`ueid`)
+                  KEY  (`tid`),
+                  KEY (`uid`),
                 ) TYPE=MyISAM /*!40100 DEFAULT CHARACTER SET utf8 */;"
       );
       break;
