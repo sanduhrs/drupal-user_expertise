@@ -4,7 +4,7 @@
 /**
  * @file
  * Evaluate a users expertise and display the result on the user's profile page.
- * 
+ *
  * @author
  * Stefan Auditor <stefan.auditor@erdfisch.de>
  */
@@ -20,7 +20,7 @@ function user_expertise_user($op, &$edit, &$account, $category = NULL) {
       'nodes' => user_expertise_overall($account),
       'comments' => user_expertise_overall($account, 'comment'),
     );
-    
+
     if ($expertise['nodes']) {
       $items['user_expertise_overall_nodes'] = array(
         'title' => t('Overall node expertise'),
@@ -35,8 +35,8 @@ function user_expertise_user($op, &$edit, &$account, $category = NULL) {
         'class' => 'user-expertise-overall-comments',
       );
     }
-    
-    return array(t('User expertise') => $items);
+
+    return is_array($items) ? array(t('User expertise') => $items) : NULL;
   }
 }
 
@@ -47,9 +47,9 @@ function user_expertise_user($op, &$edit, &$account, $category = NULL) {
  * @return an integer representing a percentage
  */
 function user_expertise_overall($user, $type = 'node') {
-  
+
   $expertise = db_fetch_object(db_query("SELECT AVG(vc.value) AS expertise FROM {votingapi_cache} vc
-                                            INNER JOIN {node} n 
+                                            INNER JOIN {node} n
                                             WHERE n.uid = %d
                                               AND vc.content_id = n.nid
                                               AND vc.function = 'average'
@@ -75,9 +75,6 @@ function theme_user_expertise_o_meter($index) {
   else {
     $output = t('No evaluation available.');
   }
-  
+
   return $output;
 }
-
-
-
