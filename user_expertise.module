@@ -53,8 +53,7 @@ function user_expertise_overall($user, $type = 'node') {
                                             WHERE n.uid = %d
                                               AND vc.content_id = n.nid
                                               AND vc.function = 'average'
-                                              AND vc.content_type = '%s'
-  ", $user->uid, $type));
+                                              AND vc.content_type = '%s'", $user->uid, $type));
 
   return $expertise->expertise ? $expertise->expertise : NULL;
 }
