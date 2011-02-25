@@ -1,4 +1,3 @@
-; $Id$
 name         = User Expertise
 description  = "Evaluate a users expertise and display the result on the user's profile page."
 dependencies = taxonomy votingapi
